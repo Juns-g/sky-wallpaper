@@ -37,11 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: MenuBarPopoverView(viewModel: viewModel) { [weak self] in
                 self?.quitApp()
             }
         )
+        hostingController.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hostingController
     }
 
     private func updateStatusIcon(for phase: DayPhase) {

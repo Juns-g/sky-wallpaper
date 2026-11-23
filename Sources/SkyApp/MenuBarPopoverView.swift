@@ -5,33 +5,26 @@ struct MenuBarPopoverView: View {
     @ObservedObject var viewModel: SkyViewModel
     let onQuit: () -> Void
 
+    @State private var showMoreSettings = false
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                headerSection
-                solarTimelineCard
-                scenePresetsSection
-                Divider().opacity(0.4)
-                styleSection
-                visualOptionsSection
-                Divider().opacity(0.4)
-                systemSyncSection
-                audioSection
-                Divider().opacity(0.4)
-                locationSection
-                Divider().opacity(0.4)
-                footerSection
-            }
-            .padding(16)
+        VStack(alignment: .leading, spacing: 12) {
+            headerSection
+            solarTimelineCard
+            scenePresetsSection
+            appearanceCard
+            moreSettingsCard
+            footerSection
         }
-        .frame(width: 340)
-        .frame(maxHeight: 680)
+        .padding(14)
+        .frame(width: 348)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Image(systemName: viewModel.snapshot.phase.symbolName)
@@ -40,9 +33,11 @@ struct MenuBarPopoverView: View {
                         .font(.system(size: 16, weight: .semibold))
                     Text(viewModel.snapshot.phase.chineseTitle)
                         .font(.system(size: 17, weight: .semibold))
+                        .lineLimit(1)
                     if let weather = viewModel.activeWeather {
                         Label(weather.shortBadge, systemImage: weather.condition.symbolName)
                             .font(.system(size: 10.5, weight: .medium))
+                            .lineLimit(1)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Color.primary.opacity(0.08), in: Capsule())
@@ -66,9 +61,10 @@ struct MenuBarPopoverView: View {
                 Text("\(viewModel.settings.location.name) · \(viewModel.settings.location.formattedCoordinates)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(viewModel.displayedTimeString)
@@ -85,7 +81,7 @@ struct MenuBarPopoverView: View {
     // MARK: - Interactive Solar Arc Timeline
 
     private var solarTimelineCard: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 6) {
             ZStack(alignment: .topTrailing) {
                 SolarArcTimeline(
                     samples: viewModel.timelineSamples,
@@ -97,9 +93,9 @@ struct MenuBarPopoverView: View {
                         viewModel.finishScrubbing()
                     }
                 )
-                .frame(height: 80)
+                .frame(height: 74)
                 .padding(.horizontal, 8)
-                .padding(.vertical, 8)
+                .padding(.vertical, 7)
 
                 Button {
                     viewModel.toggleDemoTour()
@@ -116,10 +112,10 @@ struct MenuBarPopoverView: View {
                     .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
-                .padding(8)
+                .padding(7)
             }
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: timelineBackdropColors,
@@ -128,7 +124,7 @@ struct MenuBarPopoverView: View {
                         )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
                     )
             )
@@ -189,254 +185,324 @@ struct MenuBarPopoverView: View {
         } label: {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
+                .padding(.vertical, 5)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Visual Style Picker
+    // MARK: - Primary Appearance & Display Card
 
-    private var styleSection: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Label("天空风格", systemImage: "paintpalette")
-                    .font(.system(size: 12.5))
-                Spacer()
-                Picker("", selection: Binding(
-                    get: { viewModel.settings.style },
-                    set: { viewModel.setStyle($0) }
-                )) {
-                    ForEach(SkyStyle.allCases) { s in
-                        Text(s.chineseTitle).tag(s)
+    private var appearanceCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 10) {
+                // Style picker row
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "paintpalette")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, alignment: .center)
+                        Text("天空风格")
+                            .font(.system(size: 12.5, weight: .medium))
+                        Spacer(minLength: 8)
+                        Picker("", selection: Binding(
+                            get: { viewModel.settings.style },
+                            set: { viewModel.setStyle($0) }
+                        )) {
+                            ForEach(SkyStyle.allCases) { s in
+                                Text(s.chineseTitle).tag(s)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 162)
+                        .controlSize(.small)
                     }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 170)
-                .controlSize(.small)
-            }
-            Text(viewModel.settings.style.description)
-                .font(.system(size: 10.5))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Visual & Multi-Display Options
-
-    private var visualOptionsSection: some View {
-        VStack(spacing: 7) {
-            Toggle(isOn: Binding(
-                get: { viewModel.settings.isWallpaperActive },
-                set: { viewModel.setWallpaperActive($0) }
-            )) {
-                Label("显示实时天空桌面", systemImage: "sparkles.rectangle.stack")
-                    .font(.system(size: 12.5))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            if viewModel.screenCount > 1 {
-                Toggle(isOn: Binding(
-                    get: { viewModel.settings.spanAcrossDisplays },
-                    set: { viewModel.setSpanAcrossDisplays($0) }
-                )) {
-                    Label("多屏拼接连续天穹（\(viewModel.screenCount) 屏）", systemImage: "display.2")
-                        .font(.system(size: 12.5))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-            }
-
-            Toggle(isOn: Binding(
-                get: { viewModel.settings.liveWeatherEnabled },
-                set: { viewModel.setLiveWeatherEnabled($0) }
-            )) {
-                Label("实时天气氛围（晴/云/雨/雪）", systemImage: "cloud.sun.rain")
-                    .font(.system(size: 12.5))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            HStack(spacing: 12) {
-                Toggle(isOn: Binding(
-                    get: { viewModel.settings.showStars },
-                    set: { viewModel.setShowStars($0) }
-                )) {
-                    Label("星空", systemImage: "sparkles")
-                        .font(.system(size: 12))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-
-                Spacer()
-
-                Toggle(isOn: Binding(
-                    get: { viewModel.settings.showMoon },
-                    set: { viewModel.setShowMoon($0) }
-                )) {
-                    Label("月相", systemImage: "moon.circle")
-                        .font(.system(size: 12))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-
-                Spacer()
-
-                Toggle(isOn: Binding(
-                    get: { viewModel.settings.ambientMotion },
-                    set: { viewModel.setAmbientMotion($0) }
-                )) {
-                    Label("微动效", systemImage: "sparkle")
-                        .font(.system(size: 12))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-            }
-            .padding(.top, 1)
-
-            if viewModel.settings.showStars {
-                HStack(spacing: 8) {
-                    Image(systemName: "star.leadinghalf.filled")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(
-                            get: { viewModel.settings.starIntensity },
-                            set: { viewModel.setStarIntensity($0) }
-                        ),
-                        in: 0.4...1.5
-                    )
-                    .controlSize(.small)
-                    Text("星点亮度")
+                    Text(viewModel.settings.style.description)
                         .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
+                        .padding(.leading, 26)
                 }
-                .padding(.leading, 4)
-            }
-        }
-    }
 
-    // MARK: - macOS System Sync (Lock Screen & Dark Mode)
+                Divider().opacity(0.35)
 
-    private var systemSyncSection: some View {
-        VStack(spacing: 7) {
-            HStack {
-                Toggle(isOn: Binding(
-                    get: { viewModel.settings.syncSystemWallpaper },
-                    set: { viewModel.setSyncSystemWallpaper($0) }
-                )) {
-                    Label("同步锁屏与系统壁纸", systemImage: "lock.display")
-                        .font(.system(size: 12.5))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-                if viewModel.settings.syncSystemWallpaper {
-                    Button("立即同步") {
-                        viewModel.syncLockScreenWallpaperNow(showToast: true)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                }
-            }
-
-            Toggle(isOn: Binding(
-                get: { viewModel.settings.syncSystemAppearance },
-                set: { viewModel.setSyncSystemAppearance($0) }
-            )) {
-                Label("随日出日落切浅色/深色模式", systemImage: "circle.lefthalf.filled")
-                    .font(.system(size: 12.5))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-        }
-    }
-
-    // MARK: - Ambient Wind Audio
-
-    private var audioSection: some View {
-        VStack(spacing: 7) {
-            Toggle(isOn: Binding(
-                get: { viewModel.settings.ambientWindEnabled },
-                set: { viewModel.setAmbientWindEnabled($0) }
-            )) {
-                Label("环境微风声", systemImage: "wind")
-                    .font(.system(size: 12.5))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-
-            if viewModel.settings.ambientWindEnabled {
-                HStack(spacing: 8) {
-                    Image(systemName: "speaker.wave.1")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Slider(
-                        value: Binding(
-                            get: { viewModel.settings.ambientWindVolume },
-                            set: { viewModel.setAmbientWindVolume($0) }
-                        ),
-                        in: 0.05...1.0
+                SettingToggleRow(
+                    icon: "sparkles.rectangle.stack",
+                    title: "实时天空桌面",
+                    subtitle: nil,
+                    isOn: Binding(
+                        get: { viewModel.settings.isWallpaperActive },
+                        set: { viewModel.setWallpaperActive($0) }
                     )
-                    .controlSize(.small)
-                    Image(systemName: "speaker.wave.3")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                )
+
+                if viewModel.screenCount > 1 {
+                    SettingToggleRow(
+                        icon: "display.2",
+                        title: "多屏连续天穹（\(viewModel.screenCount) 屏）",
+                        subtitle: "把多块屏幕拼成同一片连续天空",
+                        isOn: Binding(
+                            get: { viewModel.settings.spanAcrossDisplays },
+                            set: { viewModel.setSpanAcrossDisplays($0) }
+                        )
+                    )
                 }
-                .padding(.leading, 4)
+
+                SettingToggleRow(
+                    icon: "cloud.sun.rain",
+                    title: "实时天气氛围",
+                    subtitle: "按当地晴/云/雨/雪柔和叠加天气层次",
+                    isOn: Binding(
+                        get: { viewModel.settings.liveWeatherEnabled },
+                        set: { viewModel.setLiveWeatherEnabled($0) }
+                    )
+                )
+
+                Divider().opacity(0.35)
+
+                // Equal-width 3-column element chips (zero wrapping, crisp alignment)
+                HStack(spacing: 6) {
+                    FeatureChipButton(
+                        icon: "sparkles",
+                        title: "星空",
+                        isOn: viewModel.settings.showStars
+                    ) {
+                        viewModel.setShowStars(!viewModel.settings.showStars)
+                    }
+                    .help("夜晚显示基于真实星表的星座与星点")
+
+                    FeatureChipButton(
+                        icon: "moon.circle",
+                        title: "月相",
+                        isOn: viewModel.settings.showMoon
+                    ) {
+                        viewModel.setShowMoon(!viewModel.settings.showMoon)
+                    }
+                    .help("按真实盈亏与方位渲染月亮")
+
+                    FeatureChipButton(
+                        icon: "wind.snow",
+                        title: "微动效",
+                        isOn: viewModel.settings.ambientMotion
+                    ) {
+                        viewModel.setAmbientMotion(!viewModel.settings.ambientMotion)
+                    }
+                    .help("插电时让卷云与星点缓慢流动；关闭可保持极低功耗")
+                }
+
+                if viewModel.settings.showStars {
+                    HStack(spacing: 8) {
+                        Image(systemName: "star.leadinghalf.filled")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, alignment: .center)
+                        Text("星点亮度")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                        Slider(
+                            value: Binding(
+                                get: { viewModel.settings.starIntensity },
+                                set: { viewModel.setStarIntensity($0) }
+                            ),
+                            in: 0.4...1.5
+                        )
+                        .controlSize(.small)
+                        Text("\(Int((viewModel.settings.starIntensity * 100).rounded()))%")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                            .frame(width: 34, alignment: .trailing)
+                    }
+                    .padding(.top, 2)
+                }
             }
         }
     }
 
-    // MARK: - Location
+    // MARK: - Collapsible More Settings Card
 
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("位置", systemImage: "location")
-                    .font(.system(size: 12.5))
+    private var moreSettingsSummary: String {
+        var tags: [String] = [viewModel.settings.location.name]
+        if viewModel.settings.syncSystemWallpaper {
+            tags.append("锁屏同步")
+        }
+        if viewModel.settings.syncSystemAppearance {
+            tags.append("深浅联动")
+        }
+        if viewModel.settings.ambientWindEnabled {
+            tags.append("微风声")
+        }
+        return tags.joined(separator: " · ")
+    }
 
-                Spacer()
+    private var moreSettingsCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showMoreSettings.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, alignment: .center)
+                        Text("更多设置")
+                            .font(.system(size: 12.5, weight: .medium))
+                        Spacer(minLength: 6)
+                        if !showMoreSettings {
+                            Text(moreSettingsSummary)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        Image(systemName: showMoreSettings ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
-                Menu {
-                    ForEach(CityPreset.all, id: \.self) { city in
-                        Button {
-                            viewModel.selectCity(city)
-                        } label: {
+                if showMoreSettings {
+                    Divider().opacity(0.35)
+
+                    // Lock screen sync
+                    VStack(alignment: .leading, spacing: 6) {
+                        SettingToggleRow(
+                            icon: "lock.display",
+                            title: "同步锁屏与系统壁纸",
+                            subtitle: "定时同步天色，锁屏与调度中心保持一致",
+                            isOn: Binding(
+                                get: { viewModel.settings.syncSystemWallpaper },
+                                set: { viewModel.setSyncSystemWallpaper($0) }
+                            )
+                        )
+                        if viewModel.settings.syncSystemWallpaper {
                             HStack {
-                                Text(city.name)
-                                if city.name == viewModel.settings.location.name {
-                                    Image(systemName: "checkmark")
+                                Spacer()
+                                Button {
+                                    viewModel.syncLockScreenWallpaperNow(showToast: true)
+                                } label: {
+                                    Label("立即同步当前天色", systemImage: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 11, weight: .medium))
                                 }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                             }
                         }
                     }
-                    Divider()
-                    Button("使用系统自动定位") {
-                        viewModel.requestAutoLocation()
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(viewModel.settings.location.name)
-                            .font(.system(size: 12, weight: .medium))
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 9))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-            }
 
-            if let notice = viewModel.statusNotice {
-                Text(notice)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    // System Light/Dark appearance sync
+                    SettingToggleRow(
+                        icon: "circle.lefthalf.filled",
+                        title: "随日出日落切浅色/深色",
+                        subtitle: "日落自动切深色模式，日出切回浅色",
+                        isOn: Binding(
+                            get: { viewModel.settings.syncSystemAppearance },
+                            set: { viewModel.setSyncSystemAppearance($0) }
+                        )
+                    )
+
+                    // Ambient wind
+                    VStack(alignment: .leading, spacing: 6) {
+                        SettingToggleRow(
+                            icon: "wind",
+                            title: "环境微风声",
+                            subtitle: "随昼夜轻柔变化的低频风声白噪音",
+                            isOn: Binding(
+                                get: { viewModel.settings.ambientWindEnabled },
+                                set: { viewModel.setAmbientWindEnabled($0) }
+                            )
+                        )
+                        if viewModel.settings.ambientWindEnabled {
+                            HStack(spacing: 8) {
+                                Image(systemName: "speaker.wave.1")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 18, alignment: .center)
+                                Slider(
+                                    value: Binding(
+                                        get: { viewModel.settings.ambientWindVolume },
+                                        set: { viewModel.setAmbientWindVolume($0) }
+                                    ),
+                                    in: 0.05...1.0
+                                )
+                                .controlSize(.small)
+                                Image(systemName: "speaker.wave.3")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Divider().opacity(0.35)
+
+                    // Location picker row
+                    HStack(spacing: 8) {
+                        Image(systemName: "location")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, alignment: .center)
+                        Text("天文位置")
+                            .font(.system(size: 12.5))
+                        Spacer(minLength: 8)
+                        Menu {
+                            ForEach(CityPreset.all, id: \.self) { city in
+                                Button {
+                                    viewModel.selectCity(city)
+                                } label: {
+                                    HStack {
+                                        Text(city.name)
+                                        if city.name == viewModel.settings.location.name {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                            Divider()
+                            Button("使用系统自动定位") {
+                                viewModel.requestAutoLocation()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(viewModel.settings.location.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 9))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    }
+
+                    // Launch at login row
+                    SettingToggleRow(
+                        icon: "power",
+                        title: "开机自动启动",
+                        subtitle: nil,
+                        isOn: Binding(
+                            get: { viewModel.launchAtLogin },
+                            set: { viewModel.setLaunchAtLogin($0) }
+                        )
+                    )
+                }
+
+                if let notice = viewModel.statusNotice {
+                    Text(notice)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -444,32 +510,21 @@ struct MenuBarPopoverView: View {
     // MARK: - Footer
 
     private var footerSection: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Toggle("开机自启", isOn: Binding(
-                    get: { viewModel.launchAtLogin },
-                    set: { viewModel.setLaunchAtLogin($0) }
-                ))
-                .toggleStyle(.checkbox)
-                .font(.system(size: 12))
-
-                Spacer()
-
-                Button("退出 Sky") {
-                    onQuit()
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            Text(viewModel.resolutionSummary)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            Button("退出 Sky") {
+                onQuit()
             }
-
-            HStack {
-                Text(viewModel.resolutionSummary)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11.5, weight: .medium))
+            .foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 2)
     }
 
     // MARK: - Colors
@@ -498,6 +553,96 @@ struct MenuBarPopoverView: View {
         }
     }
 }
+
+// MARK: - Reusable Layout Components
+
+private struct SectionCard<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+                    )
+            )
+    }
+}
+
+private struct SettingToggleRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String?
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 1.5) {
+                Text(title)
+                    .font(.system(size: 12.5))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct FeatureChipButton: View {
+    let icon: String
+    let title: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11.5, weight: .medium))
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isOn ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(isOn ? Color.accentColor.opacity(0.65) : Color.primary.opacity(0.08), lineWidth: 0.75)
+                    )
+            )
+            .foregroundStyle(isOn ? Color.accentColor : Color.primary.opacity(0.85))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Solar Arc Timeline
 
 private struct SolarArcTimeline: View {
     let samples: [TimelineSample]
