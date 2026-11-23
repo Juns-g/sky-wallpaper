@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-一个基于原生 **Swift + Metal** 编写的轻量级 macOS 菜单栏实时天空壁纸应用：按真实天文位置在桌面图标和小组件背后实时渲染昼夜光影与星座，支持多屏原生 4K / Retina 输出，体积不到 1 MB。
+一个基于原生 **Swift + Metal** 编写的轻量级 macOS 菜单栏实时天空壁纸应用：按真实天文位置在桌面图标和小组件背后实时渲染昼夜光影与星座，支持多屏原生 4K / 跨屏连续天穹与锁屏同步，体积不到 1 MB。
 
 <table>
   <tr>
@@ -26,19 +26,20 @@
 ## 核心特性
 
 - **真实天文计算**：基于 NOAA/Meeus 算法，按当前日期、季节与经纬度实时计算太阳高度角、方位角、日出日落、昼长、月相与恒星时。
-- **原生 4K / 多屏 Metal 渲染**：显式锁定每块显示器的物理像素倍率（支持 4K 横屏、Retina 内置屏、4K 竖屏），感知空间多段平滑渐变 + 三角抖动消除色带。
-- **三套天空风格**：
+- **原生 4K & 多屏连续天穹**：显式锁定每块显示器的物理像素倍率（支持 4K 横屏、Retina 内置屏、4K 竖屏），支持将多块显示器**无缝拼接成同一片连续天空**（太阳早上从左屏升起、正午经过主屏、傍晚滑到右屏落下）。
+- **接近 0% 的静默功耗**：平时采用事件驱动按需单帧渲染，全屏窗口遮挡自动停绘、熄屏暂停、电池模式自动降频，几乎不占用 CPU/GPU。
+- **锁屏 & Mission Control 同步**：可选自动将当前实时天色离屏渲染并同步为 macOS 系统壁纸（定时 + 锁屏瞬间触发），关闭时自动还原你原有的系统壁纸。
+- **三套天空风格 + 实时天气**：
   - **纯净**（默认）：极简通透大气渐变 + 疏朗克制的真实星座；
   - **卷云**：日间与晨昏叠加 6 阶高空细丝卷云，夜晚保持清透；
-  - **深空**：增强真实银道面星簇与微弱银河尘埃带。
-- **菜单栏交互时间轴**：支持 60fps 拖动太阳弧线预览 24 小时、一键 **「演示全天」** 循环演播、6 时段快捷跳转、可选开启 3D 月相，一键回到当前实时时间。
-- **零素材程序化微风声**：用 `AVAudioEngine` 实时合成随昼夜音色变化的柔和微风声，无需内嵌音频文件。
-- **低功耗与无侵入**：二进制仅 ~683 KB，无账号、无埋点，熄屏自动暂停渲染；不覆盖 macOS 原有壁纸与锁屏，暂停或退出立即恢复原壁纸。
+  - **深空**：增强真实银道面星簇与微弱银河尘埃带；
+  - **可选实时天气（Open-Meteo，免 Key）**：按本地晴/多云/阴/雨/雪柔和叠加对应云量、微雨丝或细雪氛围。
+- **原生细节与联动**：菜单栏图标随昼夜阶段自带柔光着色，支持 60fps 拖动 24h 时间轴与一键「演示全天」、可选随日出日落自动切换 macOS 浅色/深色模式、内置零素材程序化微风声。
 
 ## 环境要求
 
 - macOS 14 (Sonoma) 及以上（支持 Apple Silicon / Intel）
-- 已安装 Xcode Command Line Tools（用于从源码编译）
+- 从源码编译需安装 Xcode Command Line Tools（也可直接从 [Releases](https://github.com/Juns-g/sky-wallpaper/releases) 下载 `.dmg` 安装包）
 
 ## 快速开始
 
@@ -46,7 +47,7 @@
 git clone https://github.com/Juns-g/sky-wallpaper.git
 cd sky-wallpaper
 
-# 运行天文与星空单元测试
+# 运行天文、多屏拼接与天气单元测试
 swift test
 
 # 编译并安装到 /Applications/Sky.app
@@ -54,6 +55,12 @@ bash scripts/build-app.sh --install
 
 # 启动应用（仅驻留顶部菜单栏，不占 Dock）
 open /Applications/Sky.app
+```
+
+### 打包 DMG 分发镜像
+
+```bash
+bash scripts/build-dmg.sh 1.1.0
 ```
 
 ### 离线生成 4K 场景画廊
@@ -65,9 +72,9 @@ open ./previews/gallery.html
 
 ## 目录结构
 
-- `Sources/SkyCore/` — 纯 Swift 天文核心（`SolarAstronomy`）、真实亮星与银道面星库（`StarCatalog`）、城市预设与配置持久化（`Models`）。
-- `Sources/SkyApp/` — Metal 大气与星点着色器（`SkyShaderSource`、`SkyRenderer`）、多显示器桌面底层窗口管理（`DesktopWindowManager`）、程序化风声引擎（`AmbientWindEngine`）与 SwiftUI 菜单栏控制面板（`MenuBarPopoverView`）。
-- `Tests/SkyCoreTests/` — 单元测试（夏至/冬至昼长、北极星高度角校验、昼夜星点显隐）。
+- `Sources/SkyCore/` — 纯 Swift 天文核心（`SolarAstronomy`）、真实亮星与银道面星库（`StarCatalog`）、多屏全景 UV 切分（`PanoramaLayout`）、WMO 天气映射（`WeatherModels`）与配置模型（`Models`）。
+- `Sources/SkyApp/` — Metal 大气/星点/雨雪着色器（`SkyShaderSource`、`SkyRenderer`）、支持遮挡休眠与多屏拼接的桌面窗口管理（`DesktopWindowManager`）、锁屏壁纸同步（`WallpaperSyncManager`）、Open-Meteo 天气客户端（`WeatherService`）、深色模式/电量联动（`SystemIntegration`）、程序化微风引擎（`AmbientWindEngine`）与 SwiftUI 菜单栏面板（`MenuBarPopoverView`）。
+- `Tests/SkyCoreTests/` — 单元测试（夏至/冬至昼长、北极星高度角、三屏全景无缝切分、WMO 天气映射）。
 
 ## 开源协议
 

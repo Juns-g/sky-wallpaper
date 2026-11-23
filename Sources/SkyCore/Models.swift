@@ -44,9 +44,9 @@ public enum SkyStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     public var description: String {
         switch self {
-        case .pure: return "无云雾干扰，极简澄澈大气与锐利星点"
+        case .pure: return "极简澄澈大气与疏朗真实星座"
         case .cirrus: return "日间与晨昏叠加高空细丝卷云，夜晚清透"
-        case .cosmos: return "增强深空银河星带与高密微星，极清夜空"
+        case .cosmos: return "增强深空银道面星簇与微弱银河尘埃带"
         }
     }
 }
@@ -68,11 +68,11 @@ public enum CityPreset {
     public static func defaultForCurrentTimeZone() -> SkyLocation {
         let tz = TimeZone.current
         if tz.identifier == "Asia/Shanghai" || tz.identifier == "Asia/Chongqing" || tz.identifier == "Asia/Beijing" {
-            return all[0] // 北京
+            return all[0]
         }
         let offsetHours = Double(tz.secondsFromGMT()) / 3600.0
         if abs(offsetHours - 8.0) < 0.5 {
-            return all[1] // 上海
+            return all[1]
         }
         let approxLon = max(-180.0, min(180.0, offsetHours * 15.0))
         return SkyLocation(name: "当前时区", latitude: 35.0, longitude: approxLon, timeZoneIdentifier: tz.identifier)
@@ -209,6 +209,11 @@ public struct SkySettings: Codable, Equatable, Sendable {
     public var showStars: Bool
     public var showMoon: Bool
     public var starIntensity: Double
+    public var ambientMotion: Bool
+    public var spanAcrossDisplays: Bool
+    public var liveWeatherEnabled: Bool
+    public var syncSystemWallpaper: Bool
+    public var syncSystemAppearance: Bool
     public var ambientWindEnabled: Bool
     public var ambientWindVolume: Double
     public var isWallpaperActive: Bool
@@ -220,6 +225,11 @@ public struct SkySettings: Codable, Equatable, Sendable {
         showStars: Bool = true,
         showMoon: Bool = false,
         starIntensity: Double = 1.0,
+        ambientMotion: Bool = false,
+        spanAcrossDisplays: Bool = true,
+        liveWeatherEnabled: Bool = false,
+        syncSystemWallpaper: Bool = false,
+        syncSystemAppearance: Bool = false,
         ambientWindEnabled: Bool = false,
         ambientWindVolume: Double = 0.35,
         isWallpaperActive: Bool = true
@@ -230,12 +240,17 @@ public struct SkySettings: Codable, Equatable, Sendable {
         self.showStars = showStars
         self.showMoon = showMoon
         self.starIntensity = starIntensity
+        self.ambientMotion = ambientMotion
+        self.spanAcrossDisplays = spanAcrossDisplays
+        self.liveWeatherEnabled = liveWeatherEnabled
+        self.syncSystemWallpaper = syncSystemWallpaper
+        self.syncSystemAppearance = syncSystemAppearance
         self.ambientWindEnabled = ambientWindEnabled
         self.ambientWindVolume = ambientWindVolume
         self.isWallpaperActive = isWallpaperActive
     }
 
-    private static let storageKey = "local.bian.SkyWallpaper.settings.v3"
+    private static let storageKey = "local.bian.SkyWallpaper.settings.v4"
 
     public static func load() -> SkySettings {
         guard let data = UserDefaults.standard.data(forKey: storageKey),

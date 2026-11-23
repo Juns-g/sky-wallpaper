@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SkyCore
 import XCTest
@@ -18,13 +19,11 @@ final class AstronomyTests: XCTestCase {
         let summerInfo = SolarAstronomy.daylightInfo(date: summer, location: beijing)
         let winterInfo = SolarAstronomy.daylightInfo(date: winter, location: beijing)
 
-        // Beijing summer solstice ~15h daylight, winter solstice ~9.3h daylight
         XCTAssertGreaterThan(summerInfo.daylightHours, 14.5)
         XCTAssertLessThan(summerInfo.daylightHours, 15.5)
         XCTAssertGreaterThan(winterInfo.daylightHours, 9.0)
         XCTAssertLessThan(winterInfo.daylightHours, 9.7)
 
-        // Solar elevation much higher in June than December
         let summerNoon = SolarAstronomy.solarPosition(date: summer, location: beijing)
         let winterNoon = SolarAstronomy.solarPosition(date: winter, location: beijing)
         XCTAssertGreaterThan(summerNoon.elevationDegrees, 70.0)
@@ -47,7 +46,6 @@ final class AstronomyTests: XCTestCase {
     }
 
     func testPolarisAltitudeMatchesLatitude() {
-        // Polaris is at Dec +89.26°, so its altitude in Beijing (39.9°N) must be ~39.9° ± 1°
         guard let polaris = StarCatalog.realBrightStars.first(where: { $0.decDegrees > 89.0 }) else {
             XCTFail("Polaris missing from catalog")
             return
@@ -58,7 +56,6 @@ final class AstronomyTests: XCTestCase {
             lstDegrees: 120.0
         )
         XCTAssertEqual(alt, 39.9, accuracy: 1.0)
-        // Polaris should be near North (azimuth ~0° or ~360°)
         let distFromNorth = min(az, 360.0 - az)
         XCTAssertLessThan(distFromNorth, 2.0)
     }
@@ -81,5 +78,46 @@ final class AstronomyTests: XCTestCase {
 
         XCTAssertTrue(noonStars.isEmpty)
         XCTAssertGreaterThan(nightStars.count, 100)
+    }
+
+    func testPanoramaLayoutPartitionsThreeDisplaysSeamlessly() {
+        // Mirrors real 3-screen setup: MacBook Left (-1512..0), 4K Center (0..1920), 4K Portrait Right (1920..3000)
+        let frames = [
+            CGRect(x: -1512, y: 0, width: 1512, height: 982),
+            CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            CGRect(x: 1920, y: -365, width: 1080, height: 1920)
+        ]
+        let slices = PanoramaLayout.computeSlices(frames: frames, spanAcrossDisplays: true)
+        XCTAssertEqual(slices.count, 3)
+
+        // Left starts at 0, center continues right where left ends, right ends at 1.0
+        XCTAssertEqual(slices[0].uvRect.x, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(slices[0].uvRect.x + slices[0].uvRect.z, slices[1].uvRect.x, accuracy: 0.0001)
+        XCTAssertEqual(slices[1].uvRect.x + slices[1].uvRect.z, slices[2].uvRect.x, accuracy: 0.0001)
+        XCTAssertEqual(slices[2].uvRect.x + slices[2].uvRect.z, 1.0, accuracy: 0.0001)
+        XCTAssertGreaterThan(slices[0].virtualAspect, 3.5)
+
+        // Independent mode gives each display [0, 0, 1, 1]
+        let independent = PanoramaLayout.computeSlices(frames: frames, spanAcrossDisplays: false)
+        for s in independent {
+            XCTAssertEqual(s.uvRect, SIMD4<Float>(0, 0, 1, 1))
+        }
+    }
+
+    func testWeatherWMOMapping() {
+        let clear = WeatherState.fromWMO(code: 0, temperatureCelsius: 22, cloudCoverPercent: 5, precipitationMM: 0)
+        XCTAssertEqual(clear.condition, .clear)
+        XCTAssertEqual(clear.rainIntensity, 0)
+        XCTAssertEqual(clear.snowIntensity, 0)
+
+        let rain = WeatherState.fromWMO(code: 63, temperatureCelsius: 14, cloudCoverPercent: 90, precipitationMM: 3.2)
+        XCTAssertEqual(rain.condition, .rain)
+        XCTAssertGreaterThan(rain.rainIntensity, 0.5)
+        XCTAssertEqual(rain.snowIntensity, 0)
+
+        let snow = WeatherState.fromWMO(code: 73, temperatureCelsius: -3, cloudCoverPercent: 85, precipitationMM: 1.5)
+        XCTAssertEqual(snow.condition, .snow)
+        XCTAssertGreaterThan(snow.snowIntensity, 0.5)
+        XCTAssertEqual(snow.rainIntensity, 0)
     }
 }

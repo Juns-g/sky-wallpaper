@@ -13,6 +13,8 @@ struct SkyUniformsGPU {
     var sunElevation: Float
     var sunScreenPos: SIMD2<Float>
     var moonScreenPos: SIMD2<Float>
+    var uvRect: SIMD4<Float>
+    var virtualAspect: Float
     var moonElevation: Float
     var moonIllumination: Float
     var moonPhase: Float
@@ -20,6 +22,9 @@ struct SkyUniformsGPU {
     var cloudStrength: Float
     var cosmosStrength: Float
     var starIntensity: Float
+    var weatherCloud: Float
+    var rainIntensity: Float
+    var snowIntensity: Float
     var lstRadians: Float
     var isMorning: Float
 }
@@ -83,7 +88,8 @@ final class SkyMetalContext {
         aspectRatio: Double
     ) -> SIMD2<Float> {
         let viewCenterAz = latitudeDegrees >= 0.0 ? 180.0 : 0.0
-        let halfHFOV = max(68.0, min(92.0, 56.0 * max(aspectRatio, 0.85)))
+        // Wide field of view adapts gracefully from portrait (0.56) to 3-monitor panorama (~4.0)
+        let halfHFOV = max(68.0, min(112.0, 56.0 * max(min(aspectRatio, 2.2), 0.85)))
         var deltaAz = azimuthDegrees - viewCenterAz
         while deltaAz > 180.0 { deltaAz -= 360.0 }
         while deltaAz < -180.0 { deltaAz += 360.0 }
@@ -107,10 +113,75 @@ final class SkyMetalContext {
         showStars: Bool,
         showMoon: Bool = false,
         starIntensity: Double,
+        slice: DisplaySlice? = nil,
+        weather: WeatherState? = nil,
         width: Int = 1920,
         height: Int = 1080,
         time: Float = 12.0
     ) throws {
+        let cgImage = try renderOffscreenImage(
+            snapshot: snapshot,
+            style: style,
+            showStars: showStars,
+            showMoon: showMoon,
+            starIntensity: starIntensity,
+            slice: slice ?? DisplaySlice.fullScreen(aspect: Double(width) / Double(height)),
+            weather: weather,
+            width: width,
+            height: height,
+            time: time
+        )
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw NSError(domain: "SkyMetalContext", code: 5, userInfo: nil)
+        }
+        CGImageDestinationAddImage(dest, cgImage, nil)
+        CGImageDestinationFinalize(dest)
+    }
+
+    func renderWallpaperJPEG(
+        to url: URL,
+        snapshot: SkySnapshot,
+        style: SkyStyle,
+        showStars: Bool,
+        showMoon: Bool,
+        starIntensity: Double,
+        slice: DisplaySlice,
+        weather: WeatherState?,
+        width: Int,
+        height: Int
+    ) throws {
+        let cgImage = try renderOffscreenImage(
+            snapshot: snapshot,
+            style: style,
+            showStars: showStars,
+            showMoon: showMoon,
+            starIntensity: starIntensity,
+            slice: slice,
+            weather: weather,
+            width: width,
+            height: height,
+            time: 12.0
+        )
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw NSError(domain: "SkyMetalContext", code: 6, userInfo: nil)
+        }
+        let props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.90]
+        CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
+        CGImageDestinationFinalize(dest)
+    }
+
+    private func renderOffscreenImage(
+        snapshot: SkySnapshot,
+        style: SkyStyle,
+        showStars: Bool,
+        showMoon: Bool,
+        starIntensity: Double,
+        slice: DisplaySlice,
+        weather: WeatherState?,
+        width: Int,
+        height: Int,
+        time: Float
+    ) throws -> CGImage {
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm,
             width: width,
@@ -129,7 +200,6 @@ final class SkyMetalContext {
         rpd.colorAttachments[0].storeAction = .store
         rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
 
-        let aspect = Double(width) / Double(height)
         var uniforms = makeUniforms(
             snapshot: snapshot,
             resolution: SIMD2<Float>(Float(width), Float(height)),
@@ -137,11 +207,13 @@ final class SkyMetalContext {
             style: style,
             showStars: showStars,
             showMoon: showMoon,
-            starIntensity: starIntensity
+            starIntensity: starIntensity,
+            slice: slice,
+            weather: weather
         )
 
         let starGPU: [StarInstanceGPU] = showStars
-            ? StarCatalog.projectVisibleStars(snapshot: snapshot, aspectRatio: aspect, starIntensity: starIntensity, style: style).map {
+            ? StarCatalog.projectVisibleStars(snapshot: snapshot, aspectRatio: slice.virtualAspect, starIntensity: starIntensity, style: style).map {
                 StarInstanceGPU(position: $0.position, color: $0.color, brightness: $0.brightness, size: $0.size, twinkleSeed: $0.twinkleSeed)
             }
             : []
@@ -164,12 +236,10 @@ final class SkyMetalContext {
         }
 
         encoder.endEncoding()
-
         if let blit = cmdBuf.makeBlitCommandEncoder() {
             blit.synchronize(resource: texture)
             blit.endEncoding()
         }
-
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
 
@@ -192,12 +262,10 @@ final class SkyMetalContext {
                 decode: nil,
                 shouldInterpolate: false,
                 intent: .defaultIntent
-              ),
-              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+              ) else {
             throw NSError(domain: "SkyMetalContext", code: 5, userInfo: nil)
         }
-        CGImageDestinationAddImage(dest, cgImage, nil)
-        CGImageDestinationFinalize(dest)
+        return cgImage
     }
 
     func makeUniforms(
@@ -207,20 +275,21 @@ final class SkyMetalContext {
         style: SkyStyle,
         showStars: Bool,
         showMoon: Bool,
-        starIntensity: Double
+        starIntensity: Double,
+        slice: DisplaySlice,
+        weather: WeatherState?
     ) -> SkyUniformsGPU {
-        let aspect = Double(resolution.x) / max(1.0, Double(resolution.y))
         let sunPos = Self.projectCelestialPoint(
             elevationDegrees: snapshot.solar.elevationDegrees,
             azimuthDegrees: snapshot.solar.azimuthDegrees,
             latitudeDegrees: snapshot.location.latitude,
-            aspectRatio: aspect
+            aspectRatio: slice.virtualAspect
         )
         let moonPos = Self.projectCelestialPoint(
             elevationDegrees: snapshot.moon.elevationDegrees,
             azimuthDegrees: snapshot.moon.azimuthDegrees,
             latitudeDegrees: snapshot.location.latitude,
-            aspectRatio: aspect
+            aspectRatio: slice.virtualAspect
         )
         return SkyUniformsGPU(
             resolution: resolution,
@@ -228,6 +297,8 @@ final class SkyMetalContext {
             sunElevation: Float(snapshot.solar.elevationDegrees),
             sunScreenPos: sunPos,
             moonScreenPos: moonPos,
+            uvRect: slice.uvRect,
+            virtualAspect: Float(slice.virtualAspect),
             moonElevation: Float(snapshot.moon.elevationDegrees),
             moonIllumination: Float(snapshot.moon.illumination),
             moonPhase: Float(snapshot.moon.phaseFraction),
@@ -235,6 +306,9 @@ final class SkyMetalContext {
             cloudStrength: style == .cirrus ? 1.0 : 0.0,
             cosmosStrength: style == .cosmos ? 1.0 : 0.0,
             starIntensity: showStars ? Float(starIntensity) : 0.0,
+            weatherCloud: Float(weather?.cloudCover ?? 0.0),
+            rainIntensity: Float(weather?.rainIntensity ?? 0.0),
+            snowIntensity: Float(weather?.snowIntensity ?? 0.0),
             lstRadians: Float(snapshot.localSiderealTimeDegrees * Double.pi / 180.0),
             isMorning: snapshot.solar.isMorning ? 1.0 : 0.0
         )
@@ -248,29 +322,40 @@ final class SkyRenderer: NSObject, MTKViewDelegate {
     private var showStars: Bool = true
     private var showMoon: Bool = false
     private var starIntensity: Double = 1.0
+    private var slice: DisplaySlice
+    private var weather: WeatherState? = nil
     private var starBuffer: MTLBuffer?
     private var starCount: Int = 0
-    private var lastAspect: Double = 1.6
     private let startTime = CACurrentMediaTime()
 
-    init(context: SkyMetalContext, initialSnapshot: SkySnapshot, initialAspect: Double = 1.6) {
+    init(context: SkyMetalContext, initialSnapshot: SkySnapshot, slice: DisplaySlice) {
         self.context = context
         self.snapshot = initialSnapshot
-        self.lastAspect = initialAspect
+        self.slice = slice
         super.init()
-        rebuildStarBuffer(aspect: lastAspect)
+        rebuildStarBuffer()
     }
 
-    func update(snapshot: SkySnapshot, style: SkyStyle, showStars: Bool, showMoon: Bool, starIntensity: Double) {
+    func update(
+        snapshot: SkySnapshot,
+        style: SkyStyle,
+        showStars: Bool,
+        showMoon: Bool,
+        starIntensity: Double,
+        slice: DisplaySlice,
+        weather: WeatherState?
+    ) {
         self.snapshot = snapshot
         self.style = style
         self.showStars = showStars
         self.showMoon = showMoon
         self.starIntensity = starIntensity
-        rebuildStarBuffer(aspect: lastAspect)
+        self.slice = slice
+        self.weather = weather
+        rebuildStarBuffer()
     }
 
-    private func rebuildStarBuffer(aspect: Double) {
+    private func rebuildStarBuffer() {
         guard showStars else {
             starCount = 0
             starBuffer = nil
@@ -278,7 +363,7 @@ final class SkyRenderer: NSObject, MTKViewDelegate {
         }
         let projected = StarCatalog.projectVisibleStars(
             snapshot: snapshot,
-            aspectRatio: aspect,
+            aspectRatio: slice.virtualAspect,
             starIntensity: starIntensity,
             style: style
         )
@@ -305,12 +390,7 @@ final class SkyRenderer: NSObject, MTKViewDelegate {
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        guard size.width > 0 && size.height > 0 else { return }
-        let newAspect = Double(size.width / size.height)
-        if abs(newAspect - lastAspect) > 0.02 {
-            lastAspect = newAspect
-            rebuildStarBuffer(aspect: newAspect)
-        }
+        // Explicit HiDPI sizing managed by DesktopWindowManager
     }
 
     func draw(in view: MTKView) {
@@ -335,7 +415,9 @@ final class SkyRenderer: NSObject, MTKViewDelegate {
             style: style,
             showStars: showStars,
             showMoon: showMoon,
-            starIntensity: starIntensity
+            starIntensity: starIntensity,
+            slice: slice,
+            weather: weather
         )
 
         encoder.setRenderPipelineState(context.skyPipeline)

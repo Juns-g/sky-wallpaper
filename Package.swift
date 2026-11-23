@@ -25,7 +25,8 @@ let package = Package(
                 .linkedFramework("MetalKit"),
                 .linkedFramework("CoreLocation"),
                 .linkedFramework("AVFoundation"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("IOKit")
             ]
         ),
         .testTarget(

@@ -8,17 +8,24 @@ final class SkyViewModel: ObservableObject {
     @Published var settings: SkySettings
     @Published private(set) var snapshot: SkySnapshot
     @Published private(set) var timelineSamples: [TimelineSample]
+    @Published private(set) var liveWeather: WeatherState? = nil
     @Published var previewHour: Double? = nil
     @Published var isScrubbing: Bool = false
     @Published var isDemoPlaying: Bool = false
-    @Published var locationNotice: String? = nil
+    @Published var statusNotice: String? = nil
     @Published var launchAtLogin: Bool = false
 
     private let desktopManager: DesktopWindowManager
     private let windEngine = AmbientWindEngine()
     private let locationManager = LocationManager()
+    private let weatherService = WeatherService()
+    private let wallpaperSync = WallpaperSyncManager()
+    private let appearanceSync = AppearanceSync()
+
     private var clockTimer: Timer?
     private var demoTimer: Timer?
+    private var weatherTimer: Timer?
+    private var wallpaperSyncTimer: Timer?
     private var lastTimelineDayKey: String = ""
 
     var onPhaseChanged: ((DayPhase) -> Void)?
@@ -48,8 +55,16 @@ final class SkyViewModel: ObservableObject {
         return "\(totalMin / 60)小时\(totalMin % 60)分"
     }
 
+    var screenCount: Int {
+        desktopManager.screenCount
+    }
+
     var resolutionSummary: String {
         desktopManager.primaryResolutionSummary
+    }
+
+    var activeWeather: WeatherState? {
+        settings.liveWeatherEnabled ? liveWeather : nil
     }
 
     init() {
@@ -61,34 +76,76 @@ final class SkyViewModel: ObservableObject {
         self.settings = loaded
         self.snapshot = initialSnap
         self.timelineSamples = samples
-        self.desktopManager = DesktopWindowManager(initialSnapshot: initialSnap)
+        self.desktopManager = DesktopWindowManager(
+            initialSnapshot: initialSnap,
+            spanAcrossDisplays: loaded.spanAcrossDisplays
+        )
         self.lastTimelineDayKey = Self.dayKey(for: now, location: loaded.location)
         self.launchAtLogin = Self.readLaunchAtLoginStatus()
 
-        setupLocationCallbacks()
+        setupCallbacks()
         syncAllOutputs()
         startClockTimer()
+
+        if loaded.liveWeatherEnabled {
+            refreshWeather()
+            startWeatherTimer()
+        }
+        if loaded.syncSystemWallpaper {
+            startWallpaperSyncTimer()
+        }
+        if loaded.syncSystemAppearance {
+            appearanceSync.applyIfNeeded(sunElevationDegrees: initialSnap.solar.elevationDegrees, enabled: true)
+        }
     }
 
-    private func setupLocationCallbacks() {
+    private func setupCallbacks() {
         locationManager.onLocationUpdated = { [weak self] loc in
             guard let self = self else { return }
             self.settings.location = loc
             self.settings.useAutoLocation = true
             self.settings.save()
             self.refreshNow(forceTimeline: true)
+            if self.settings.liveWeatherEnabled {
+                self.refreshWeather()
+            }
         }
         locationManager.onStatusMessage = { [weak self] msg in
-            self?.locationNotice = msg
+            self?.statusNotice = msg
+        }
+        wallpaperSync.onScreenLocked = { [weak self] in
+            guard let self = self, self.settings.syncSystemWallpaper else { return }
+            self.syncLockScreenWallpaperNow(showToast: false)
         }
     }
 
     private func startClockTimer() {
         clockTimer?.invalidate()
-        clockTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+        // 30-second astronomical update cadence keeps idle CPU near 0.0%
+        clockTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.previewHour == nil else { return }
                 self.refreshNow(forceTimeline: false)
+            }
+        }
+    }
+
+    private func startWeatherTimer() {
+        weatherTimer?.invalidate()
+        weatherTimer = Timer.scheduledTimer(withTimeInterval: 20.0 * 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.settings.liveWeatherEnabled else { return }
+                self.refreshWeather()
+            }
+        }
+    }
+
+    private func startWallpaperSyncTimer() {
+        wallpaperSyncTimer?.invalidate()
+        wallpaperSyncTimer = Timer.scheduledTimer(withTimeInterval: 20.0 * 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.settings.syncSystemWallpaper, self.previewHour == nil else { return }
+                self.syncLockScreenWallpaperNow(showToast: false)
             }
         }
     }
@@ -107,7 +164,15 @@ final class SkyViewModel: ObservableObject {
 
         if prevPhase != newSnap.phase {
             onPhaseChanged?(newSnap.phase)
+            if settings.syncSystemWallpaper && previewHour == nil {
+                syncLockScreenWallpaperNow(showToast: false)
+            }
         }
+
+        if settings.syncSystemAppearance && previewHour == nil {
+            appearanceSync.applyIfNeeded(sunElevationDegrees: newSnap.solar.elevationDegrees, enabled: true)
+        }
+
         syncAllOutputs()
     }
 
@@ -125,6 +190,9 @@ final class SkyViewModel: ObservableObject {
             showStars: settings.showStars,
             showMoon: settings.showMoon,
             starIntensity: settings.starIntensity,
+            ambientMotion: settings.ambientMotion,
+            spanAcrossDisplays: settings.spanAcrossDisplays,
+            weather: activeWeather,
             isActive: settings.isWallpaperActive,
             isAnimatingFast: isScrubbing || isDemoPlaying
         )
@@ -178,7 +246,6 @@ final class SkyViewModel: ObservableObject {
             previewHour = (snapshot.daylight.sunriseHour ?? 6.5) - 0.8
         }
         demoTimer?.invalidate()
-        // Smooth 30Hz sweep covering 24h in ~18 seconds
         demoTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self, self.isDemoPlaying else { return }
@@ -202,8 +269,11 @@ final class SkyViewModel: ObservableObject {
         settings.location = city
         settings.useAutoLocation = false
         settings.save()
-        locationNotice = nil
+        statusNotice = nil
         refreshNow(forceTimeline: true)
+        if settings.liveWeatherEnabled {
+            refreshWeather()
+        }
     }
 
     func requestAutoLocation() {
@@ -214,6 +284,9 @@ final class SkyViewModel: ObservableObject {
         settings.style = style
         settings.save()
         syncAllOutputs()
+        if settings.syncSystemWallpaper {
+            syncLockScreenWallpaperNow(showToast: false)
+        }
     }
 
     func setShowStars(_ enabled: Bool) {
@@ -232,6 +305,90 @@ final class SkyViewModel: ObservableObject {
         settings.starIntensity = max(0.3, min(1.5, value))
         settings.save()
         syncAllOutputs()
+    }
+
+    func setAmbientMotion(_ enabled: Bool) {
+        settings.ambientMotion = enabled
+        settings.save()
+        syncAllOutputs()
+    }
+
+    func setSpanAcrossDisplays(_ enabled: Bool) {
+        settings.spanAcrossDisplays = enabled
+        settings.save()
+        syncAllOutputs()
+        if settings.syncSystemWallpaper {
+            syncLockScreenWallpaperNow(showToast: false)
+        }
+    }
+
+    func setLiveWeatherEnabled(_ enabled: Bool) {
+        settings.liveWeatherEnabled = enabled
+        settings.save()
+        if enabled {
+            refreshWeather()
+            startWeatherTimer()
+        } else {
+            weatherTimer?.invalidate()
+            weatherTimer = nil
+            weatherService.cancel()
+            statusNotice = nil
+        }
+        syncAllOutputs()
+    }
+
+    func refreshWeather() {
+        statusNotice = "正在获取 \(settings.location.name) 实时天气…"
+        weatherService.fetch(for: settings.location) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let state):
+                self.liveWeather = state
+                self.statusNotice = nil
+                self.syncAllOutputs()
+            case .failure:
+                self.statusNotice = "实时天气暂不可达，已保持纯净天空"
+            }
+        }
+    }
+
+    func setSyncSystemWallpaper(_ enabled: Bool) {
+        settings.syncSystemWallpaper = enabled
+        settings.save()
+        if enabled {
+            syncLockScreenWallpaperNow(showToast: true)
+            startWallpaperSyncTimer()
+        } else {
+            wallpaperSyncTimer?.invalidate()
+            wallpaperSyncTimer = nil
+            wallpaperSync.restoreOriginalWallpapers()
+            statusNotice = "已恢复系统原有壁纸"
+        }
+    }
+
+    func syncLockScreenWallpaperNow(showToast: Bool = true) {
+        wallpaperSync.syncNow(
+            snapshot: snapshot,
+            style: settings.style,
+            showStars: settings.showStars,
+            showMoon: settings.showMoon,
+            starIntensity: settings.starIntensity,
+            spanAcrossDisplays: settings.spanAcrossDisplays,
+            weather: activeWeather
+        )
+        if showToast {
+            statusNotice = "已将当前天色同步到系统与锁屏壁纸"
+        }
+    }
+
+    func setSyncSystemAppearance(_ enabled: Bool) {
+        settings.syncSystemAppearance = enabled
+        settings.save()
+        if enabled {
+            appearanceSync.applyIfNeeded(sunElevationDegrees: snapshot.solar.elevationDegrees, enabled: true)
+        } else {
+            appearanceSync.reset()
+        }
     }
 
     func setAmbientWindEnabled(_ enabled: Bool) {
@@ -261,7 +418,7 @@ final class SkyViewModel: ObservableObject {
             }
             launchAtLogin = Self.readLaunchAtLoginStatus()
         } catch {
-            locationNotice = "开机自启需从 /Applications/Sky.app 运行后启用"
+            statusNotice = "开机自启需从 /Applications/Sky.app 运行后启用"
             launchAtLogin = Self.readLaunchAtLoginStatus()
         }
     }
@@ -269,6 +426,9 @@ final class SkyViewModel: ObservableObject {
     func shutdown() {
         stopDemoTour()
         clockTimer?.invalidate()
+        weatherTimer?.invalidate()
+        wallpaperSyncTimer?.invalidate()
+        weatherService.cancel()
         windEngine.stop()
     }
 

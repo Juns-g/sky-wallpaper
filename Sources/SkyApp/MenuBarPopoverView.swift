@@ -6,21 +6,26 @@ struct MenuBarPopoverView: View {
     let onQuit: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            headerSection
-            solarTimelineCard
-            scenePresetsSection
-            Divider().opacity(0.45)
-            styleSection
-            appearanceSection
-            audioSection
-            Divider().opacity(0.45)
-            locationSection
-            Divider().opacity(0.45)
-            footerSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                headerSection
+                solarTimelineCard
+                scenePresetsSection
+                Divider().opacity(0.4)
+                styleSection
+                visualOptionsSection
+                Divider().opacity(0.4)
+                systemSyncSection
+                audioSection
+                Divider().opacity(0.4)
+                locationSection
+                Divider().opacity(0.4)
+                footerSection
+            }
+            .padding(16)
         }
-        .padding(16)
-        .frame(width: 332)
+        .frame(width: 340)
+        .frame(maxHeight: 680)
     }
 
     // MARK: - Header
@@ -35,6 +40,13 @@ struct MenuBarPopoverView: View {
                         .font(.system(size: 16, weight: .semibold))
                     Text(viewModel.snapshot.phase.chineseTitle)
                         .font(.system(size: 17, weight: .semibold))
+                    if let weather = viewModel.activeWeather {
+                        Label(weather.shortBadge, systemImage: weather.condition.symbolName)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.primary.opacity(0.08), in: Capsule())
+                    }
                     if viewModel.isDemoPlaying {
                         Text("演示中")
                             .font(.system(size: 10, weight: .medium))
@@ -73,7 +85,7 @@ struct MenuBarPopoverView: View {
     // MARK: - Interactive Solar Arc Timeline
 
     private var solarTimelineCard: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             ZStack(alignment: .topTrailing) {
                 SolarArcTimeline(
                     samples: viewModel.timelineSamples,
@@ -85,7 +97,7 @@ struct MenuBarPopoverView: View {
                         viewModel.finishScrubbing()
                     }
                 )
-                .frame(height: 82)
+                .frame(height: 80)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
 
@@ -143,11 +155,11 @@ struct MenuBarPopoverView: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                quickButton("黎明", hour: sunrise - 0.55)
-                quickButton("日出", hour: sunrise + 0.12)
+                quickButton("黎明", hour: sunrise - 0.50)
+                quickButton("日出", hour: sunrise + 0.20)
                 quickButton("正午", hour: noon)
-                quickButton("日落", hour: sunset - 0.10)
-                quickButton("暮色", hour: sunset + 0.45)
+                quickButton("日落", hour: sunset - 0.15)
+                quickButton("暮色", hour: sunset + 0.48)
                 quickButton("星夜", hour: 22.5)
             }
 
@@ -187,7 +199,7 @@ struct MenuBarPopoverView: View {
     // MARK: - Visual Style Picker
 
     private var styleSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Label("天空风格", systemImage: "paintpalette")
                     .font(.system(size: 12.5))
@@ -211,10 +223,10 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    // MARK: - Appearance & Stars
+    // MARK: - Visual & Multi-Display Options
 
-    private var appearanceSection: some View {
-        VStack(spacing: 8) {
+    private var visualOptionsSection: some View {
+        VStack(spacing: 7) {
             Toggle(isOn: Binding(
                 get: { viewModel.settings.isWallpaperActive },
                 set: { viewModel.setWallpaperActive($0) }
@@ -225,25 +237,64 @@ struct MenuBarPopoverView: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
+            if viewModel.screenCount > 1 {
+                Toggle(isOn: Binding(
+                    get: { viewModel.settings.spanAcrossDisplays },
+                    set: { viewModel.setSpanAcrossDisplays($0) }
+                )) {
+                    Label("多屏拼接连续天穹（\(viewModel.screenCount) 屏）", systemImage: "display.2")
+                        .font(.system(size: 12.5))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+
             Toggle(isOn: Binding(
-                get: { viewModel.settings.showStars },
-                set: { viewModel.setShowStars($0) }
+                get: { viewModel.settings.liveWeatherEnabled },
+                set: { viewModel.setLiveWeatherEnabled($0) }
             )) {
-                Label("真实天文星空", systemImage: "sparkles")
+                Label("实时天气氛围（晴/云/雨/雪）", systemImage: "cloud.sun.rain")
                     .font(.system(size: 12.5))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Toggle(isOn: Binding(
-                get: { viewModel.settings.showMoon },
-                set: { viewModel.setShowMoon($0) }
-            )) {
-                Label("显示真实月相", systemImage: "moon.circle")
-                    .font(.system(size: 12.5))
+            HStack(spacing: 12) {
+                Toggle(isOn: Binding(
+                    get: { viewModel.settings.showStars },
+                    set: { viewModel.setShowStars($0) }
+                )) {
+                    Label("星空", systemImage: "sparkles")
+                        .font(.system(size: 12))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+                Spacer()
+
+                Toggle(isOn: Binding(
+                    get: { viewModel.settings.showMoon },
+                    set: { viewModel.setShowMoon($0) }
+                )) {
+                    Label("月相", systemImage: "moon.circle")
+                        .font(.system(size: 12))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+                Spacer()
+
+                Toggle(isOn: Binding(
+                    get: { viewModel.settings.ambientMotion },
+                    set: { viewModel.setAmbientMotion($0) }
+                )) {
+                    Label("微动效", systemImage: "sparkle")
+                        .font(.system(size: 12))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
             }
-            .toggleStyle(.switch)
-            .controlSize(.small)
+            .padding(.top, 1)
 
             if viewModel.settings.showStars {
                 HStack(spacing: 8) {
@@ -267,10 +318,46 @@ struct MenuBarPopoverView: View {
         }
     }
 
+    // MARK: - macOS System Sync (Lock Screen & Dark Mode)
+
+    private var systemSyncSection: some View {
+        VStack(spacing: 7) {
+            HStack {
+                Toggle(isOn: Binding(
+                    get: { viewModel.settings.syncSystemWallpaper },
+                    set: { viewModel.setSyncSystemWallpaper($0) }
+                )) {
+                    Label("同步锁屏与系统壁纸", systemImage: "lock.display")
+                        .font(.system(size: 12.5))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                if viewModel.settings.syncSystemWallpaper {
+                    Button("立即同步") {
+                        viewModel.syncLockScreenWallpaperNow(showToast: true)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                }
+            }
+
+            Toggle(isOn: Binding(
+                get: { viewModel.settings.syncSystemAppearance },
+                set: { viewModel.setSyncSystemAppearance($0) }
+            )) {
+                Label("随日出日落切浅色/深色模式", systemImage: "circle.lefthalf.filled")
+                    .font(.system(size: 12.5))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+    }
+
     // MARK: - Ambient Wind Audio
 
     private var audioSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             Toggle(isOn: Binding(
                 get: { viewModel.settings.ambientWindEnabled },
                 set: { viewModel.setAmbientWindEnabled($0) }
@@ -345,7 +432,7 @@ struct MenuBarPopoverView: View {
                 .fixedSize()
             }
 
-            if let notice = viewModel.locationNotice {
+            if let notice = viewModel.statusNotice {
                 Text(notice)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
@@ -401,13 +488,13 @@ struct MenuBarPopoverView: View {
     private var timelineBackdropColors: [Color] {
         switch viewModel.snapshot.phase {
         case .dawn, .dusk:
-            return [Color(red: 0.11, green: 0.16, blue: 0.34), Color(red: 0.36, green: 0.25, blue: 0.36)]
+            return [Color(red: 0.14, green: 0.20, blue: 0.48), Color(red: 0.45, green: 0.35, blue: 0.54)]
         case .sunrise, .sunset:
-            return [Color(red: 0.16, green: 0.30, blue: 0.54), Color(red: 0.64, green: 0.40, blue: 0.32)]
+            return [Color(red: 0.16, green: 0.30, blue: 0.68), Color(red: 0.76, green: 0.54, blue: 0.46)]
         case .day:
-            return [Color(red: 0.12, green: 0.36, blue: 0.68), Color(red: 0.28, green: 0.56, blue: 0.82)]
+            return [Color(red: 0.14, green: 0.39, blue: 0.90), Color(red: 0.42, green: 0.67, blue: 0.98)]
         case .night:
-            return [Color(red: 0.04, green: 0.07, blue: 0.16), Color(red: 0.09, green: 0.14, blue: 0.26)]
+            return [Color(red: 0.03, green: 0.06, blue: 0.16), Color(red: 0.13, green: 0.20, blue: 0.42)]
         }
     }
 }
