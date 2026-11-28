@@ -239,16 +239,35 @@ struct MenuBarPopoverView: View {
                     )
                 )
 
-                if viewModel.screenCount > 1 {
+                if viewModel.displays.count > 1 {
                     SettingToggleRow(
                         icon: "display.2",
-                        title: "多屏连续天穹（\(viewModel.screenCount) 屏）",
+                        title: "多屏连续天穹（\(viewModel.enabledDisplayCount) 屏）",
                         subtitle: "把多块屏幕拼成同一片连续天空",
                         isOn: Binding(
                             get: { viewModel.settings.spanAcrossDisplays },
                             set: { viewModel.setSpanAcrossDisplays($0) }
                         )
                     )
+                    .disabled(viewModel.enabledDisplayCount < 2)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("显示器")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 26)
+                        ForEach(viewModel.displays) { display in
+                            SettingToggleRow(
+                                icon: "display",
+                                title: "\(display.name)（\(display.width)×\(display.height)）",
+                                subtitle: nil,
+                                isOn: Binding(
+                                    get: { viewModel.isDisplayEnabled(display.id) },
+                                    set: { viewModel.setDisplayEnabled(uuid: display.id, enabled: $0) }
+                                )
+                            )
+                        }
+                    }
                 }
 
                 SettingToggleRow(

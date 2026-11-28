@@ -22,6 +22,7 @@ final class DesktopWindowManager {
     private var starIntensity: Double = 1.0
     private var ambientMotion: Bool = false
     private var spanAcrossDisplays: Bool = true
+    private var disabledDisplayIDs: [String] = []
     private var weather: WeatherState? = nil
     private var isActive: Bool = true
     private var isAnimatingFast: Bool = false
@@ -29,6 +30,10 @@ final class DesktopWindowManager {
 
     private var observers: [NSObjectProtocol] = []
 
+    /// Called after windows were rebuilt because the connected screens changed.
+    var onScreensChanged: (() -> Void)?
+
+    /// Number of displays currently showing the sky (excluded displays are not counted).
     var screenCount: Int {
         surfaces.count
     }
@@ -40,9 +45,10 @@ final class DesktopWindowManager {
         return "Metal \(first.pixelWidth)×\(first.pixelHeight)\(countSuffix)\(modeSuffix)"
     }
 
-    init(initialSnapshot: SkySnapshot, spanAcrossDisplays: Bool) {
+    init(initialSnapshot: SkySnapshot, spanAcrossDisplays: Bool, disabledDisplayIDs: [String]) {
         self.latestSnapshot = initialSnapshot
         self.spanAcrossDisplays = spanAcrossDisplays
+        self.disabledDisplayIDs = disabledDisplayIDs
         setupObservers()
         rebuildWindows()
     }
@@ -62,6 +68,7 @@ final class DesktopWindowManager {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.rebuildWindows()
+                self?.onScreensChanged?()
             }
         }
         observers.append(screenObs)
@@ -92,6 +99,12 @@ final class DesktopWindowManager {
         observers.append(wakeObs)
     }
 
+    func setDisabledDisplayIDs(_ ids: [String]) {
+        guard ids != disabledDisplayIDs else { return }
+        disabledDisplayIDs = ids
+        rebuildWindows()
+    }
+
     func rebuildWindows() {
         for surface in surfaces {
             surface.mtkView.isPaused = true
@@ -102,7 +115,8 @@ final class DesktopWindowManager {
 
         guard let context = SkyMetalContext.shared else { return }
 
-        let screens = NSScreen.screens
+        // Only enabled displays get a window and take part in the panorama width.
+        let screens = DisplayIdentity.enabledScreens(disabled: disabledDisplayIDs)
         let slices = PanoramaLayout.computeSlices(frames: screens.map(\.frame), spanAcrossDisplays: spanAcrossDisplays)
         let desktopLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)))
 

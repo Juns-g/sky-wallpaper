@@ -217,6 +217,8 @@ public struct SkySettings: Codable, Equatable, Sendable {
     public var ambientWindEnabled: Bool
     public var ambientWindVolume: Double
     public var isWallpaperActive: Bool
+    /// Display UUIDs (CGDisplayCreateUUIDFromDisplayID) excluded from rendering & wallpaper sync.
+    public var disabledDisplayIDs: [String]
 
     public init(
         location: SkyLocation = CityPreset.defaultForCurrentTimeZone(),
@@ -232,7 +234,8 @@ public struct SkySettings: Codable, Equatable, Sendable {
         syncSystemAppearance: Bool = false,
         ambientWindEnabled: Bool = false,
         ambientWindVolume: Double = 0.35,
-        isWallpaperActive: Bool = true
+        isWallpaperActive: Bool = true,
+        disabledDisplayIDs: [String] = []
     ) {
         self.location = location
         self.useAutoLocation = useAutoLocation
@@ -248,6 +251,29 @@ public struct SkySettings: Codable, Equatable, Sendable {
         self.ambientWindEnabled = ambientWindEnabled
         self.ambientWindVolume = ambientWindVolume
         self.isWallpaperActive = isWallpaperActive
+        self.disabledDisplayIDs = disabledDisplayIDs
+    }
+
+    /// Tolerant decoding: any missing key (e.g. older settings.v4 data without `disabledDisplayIDs`)
+    /// falls back to the default value instead of discarding the user's whole configuration.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = SkySettings()
+        self.location = try c.decodeIfPresent(SkyLocation.self, forKey: .location) ?? d.location
+        self.useAutoLocation = try c.decodeIfPresent(Bool.self, forKey: .useAutoLocation) ?? d.useAutoLocation
+        self.style = try c.decodeIfPresent(SkyStyle.self, forKey: .style) ?? d.style
+        self.showStars = try c.decodeIfPresent(Bool.self, forKey: .showStars) ?? d.showStars
+        self.showMoon = try c.decodeIfPresent(Bool.self, forKey: .showMoon) ?? d.showMoon
+        self.starIntensity = try c.decodeIfPresent(Double.self, forKey: .starIntensity) ?? d.starIntensity
+        self.ambientMotion = try c.decodeIfPresent(Bool.self, forKey: .ambientMotion) ?? d.ambientMotion
+        self.spanAcrossDisplays = try c.decodeIfPresent(Bool.self, forKey: .spanAcrossDisplays) ?? d.spanAcrossDisplays
+        self.liveWeatherEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveWeatherEnabled) ?? d.liveWeatherEnabled
+        self.syncSystemWallpaper = try c.decodeIfPresent(Bool.self, forKey: .syncSystemWallpaper) ?? d.syncSystemWallpaper
+        self.syncSystemAppearance = try c.decodeIfPresent(Bool.self, forKey: .syncSystemAppearance) ?? d.syncSystemAppearance
+        self.ambientWindEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientWindEnabled) ?? d.ambientWindEnabled
+        self.ambientWindVolume = try c.decodeIfPresent(Double.self, forKey: .ambientWindVolume) ?? d.ambientWindVolume
+        self.isWallpaperActive = try c.decodeIfPresent(Bool.self, forKey: .isWallpaperActive) ?? d.isWallpaperActive
+        self.disabledDisplayIDs = try c.decodeIfPresent([String].self, forKey: .disabledDisplayIDs) ?? d.disabledDisplayIDs
     }
 
     private static let storageKey = "local.bian.SkyWallpaper.settings.v4"

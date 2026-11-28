@@ -62,12 +62,14 @@ final class WallpaperSyncManager {
         showMoon: Bool,
         starIntensity: Double,
         spanAcrossDisplays: Bool,
-        weather: WeatherState?
+        weather: WeatherState?,
+        disabledDisplayIDs: [String]
     ) {
         guard let context = SkyMetalContext.shared else { return }
         backupOriginalWallpapersIfNeeded()
+        restoreExcludedDisplays(disabledDisplayIDs: disabledDisplayIDs)
 
-        let screens = NSScreen.screens
+        let screens = DisplayIdentity.enabledScreens(disabled: disabledDisplayIDs)
         let slices = PanoramaLayout.computeSlices(frames: screens.map(\.frame), spanAcrossDisplays: spanAcrossDisplays)
         let stamp = Int(Date().timeIntervalSince1970)
         var newlyWritten: [URL] = []
@@ -137,6 +139,27 @@ final class WallpaperSyncManager {
             }
         }
         UserDefaults.standard.removeObject(forKey: backupKey)
+    }
+
+    /// Put back the original wallpaper on excluded displays that still show one of our generated skies.
+    /// Keeps the backup dictionary intact so a later full restore still works.
+    func restoreExcludedDisplays(disabledDisplayIDs: [String]) {
+        guard !disabledDisplayIDs.isEmpty,
+              let backup = UserDefaults.standard.dictionary(forKey: backupKey) as? [String: String] else {
+            return
+        }
+        let excluded = Set(disabledDisplayIDs)
+        for (idx, screen) in NSScreen.screens.enumerated() where excluded.contains(DisplayIdentity.uuid(for: screen)) {
+            guard let current = NSWorkspace.shared.desktopImageURL(for: screen),
+                  current.path.contains("SkyWallpaper/SyncedWallpapers") else { continue }
+            let key = screenIdentifier(screen, index: idx)
+            if let path = backup[key] ?? backup.values.first {
+                let url = URL(fileURLWithPath: path)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try? NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [:])
+                }
+            }
+        }
     }
 
     private func screenIdentifier(_ screen: NSScreen, index: Int) -> String {
