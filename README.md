@@ -26,7 +26,7 @@ A lightweight, native **Swift + Metal** live sky wallpaper for macOS that render
 ## Features
 
 - **Real Astronomical Calculations**: Uses NOAA/Meeus solar & sidereal formulas to compute exact solar altitude, azimuth, sunrise/sunset, daylight duration, lunar phase, and star positions for your location and season.
-- **Native 4K & Multi-Display Panorama**: Explicitly locks per-screen `backingScaleFactor` (`3840×2160`, Retina XDR, portrait 4K, etc.) and supports **spanning one continuous sky dome seamlessly across all connected monitors** (the Sun rises on your left display, arcs across center, and sets on the right!).
+- **Native 4K & Multi-Display Panorama**: Explicitly locks per-screen `backingScaleFactor` (`3840×2160`, Retina XDR, portrait 4K, etc.) and supports **spanning one continuous sky dome seamlessly across all connected monitors** (the Sun rises on your left display, arcs across center, and sets on the right!). Each display can also be switched on or off individually (e.g. to exclude a virtual display).
 - **Near-0% Idle Power Footprint**: On-demand single-frame rendering during steady state, automatic pause when displays sleep or are occluded by full-screen windows, and automatic battery-power protection.
 - **Lock Screen & Mission Control Sync**: Optional automatic sync renders the live sky to your macOS system wallpaper periodically and right on screen lock (with automatic backup & one-click restore of your original wallpaper).
 - **3 Visual Styles + Live Weather**:

@@ -104,6 +104,42 @@ final class AstronomyTests: XCTestCase {
         }
     }
 
+    func testPanoramaWithOneEnabledDisplayIsFullScreen() {
+        // Two displays connected, one excluded: only the enabled frame is passed in, so it gets the whole sky
+        let enabledOnly = [CGRect(x: 0, y: 0, width: 1920, height: 1080)]
+        let slices = PanoramaLayout.computeSlices(frames: enabledOnly, spanAcrossDisplays: true)
+        XCTAssertEqual(slices.count, 1)
+        XCTAssertEqual(slices[0], DisplaySlice.fullScreen(aspect: 1920.0 / 1080.0))
+    }
+
+    func testSettingsDecodeLegacyJSONWithoutDisabledDisplays() throws {
+        let legacy = """
+        {"location":{"name":"Tokyo","latitude":35.68,"longitude":139.69,"timeZoneIdentifier":"Asia/Tokyo"},
+         "useAutoLocation":true,"style":"STYLE","showStars":false,"showMoon":true,"starIntensity":1.3,
+         "ambientMotion":true,"spanAcrossDisplays":false,"liveWeatherEnabled":true,"syncSystemWallpaper":true,
+         "syncSystemAppearance":true,"ambientWindEnabled":true,"ambientWindVolume":0.8,"isWallpaperActive":false}
+        """
+        .replacingOccurrences(of: "STYLE", with: SkyStyle.allCases.last!.rawValue)
+        let decoded = try JSONDecoder().decode(SkySettings.self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded.disabledDisplayIDs, [])
+        XCTAssertEqual(decoded.location.name, "Tokyo")
+        XCTAssertEqual(decoded.style, SkyStyle.allCases.last!)
+        XCTAssertTrue(decoded.useAutoLocation)
+        XCTAssertFalse(decoded.showStars)
+        XCTAssertTrue(decoded.showMoon)
+        XCTAssertEqual(decoded.starIntensity, 1.3)
+        XCTAssertFalse(decoded.spanAcrossDisplays)
+        XCTAssertTrue(decoded.syncSystemWallpaper)
+        XCTAssertEqual(decoded.ambientWindVolume, 0.8)
+        XCTAssertFalse(decoded.isWallpaperActive)
+
+        // Round-trip keeps the new field
+        var updated = decoded
+        updated.disabledDisplayIDs = ["ABC-123"]
+        let again = try JSONDecoder().decode(SkySettings.self, from: JSONEncoder().encode(updated))
+        XCTAssertEqual(again, updated)
+    }
+
     func testWeatherWMOMapping() {
         let clear = WeatherState.fromWMO(code: 0, temperatureCelsius: 22, cloudCoverPercent: 5, precipitationMM: 0)
         XCTAssertEqual(clear.condition, .clear)

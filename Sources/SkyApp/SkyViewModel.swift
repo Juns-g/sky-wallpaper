@@ -14,6 +14,8 @@ final class SkyViewModel: ObservableObject {
     @Published var isDemoPlaying: Bool = false
     @Published var statusNotice: String? = nil
     @Published var launchAtLogin: Bool = false
+    /// All connected displays (including excluded ones), refreshed when screen parameters change.
+    @Published private(set) var displays: [DisplayInfo] = DisplayIdentity.allDisplays()
 
     private let desktopManager: DesktopWindowManager
     private let windEngine = AmbientWindEngine()
@@ -59,6 +61,11 @@ final class SkyViewModel: ObservableObject {
         desktopManager.screenCount
     }
 
+    /// Connected displays that are switched on (drives the panorama "N 屏" label).
+    var enabledDisplayCount: Int {
+        displays.filter { isDisplayEnabled($0.id) }.count
+    }
+
     var resolutionSummary: String {
         desktopManager.primaryResolutionSummary
     }
@@ -78,7 +85,8 @@ final class SkyViewModel: ObservableObject {
         self.timelineSamples = samples
         self.desktopManager = DesktopWindowManager(
             initialSnapshot: initialSnap,
-            spanAcrossDisplays: loaded.spanAcrossDisplays
+            spanAcrossDisplays: loaded.spanAcrossDisplays,
+            disabledDisplayIDs: loaded.disabledDisplayIDs
         )
         self.lastTimelineDayKey = Self.dayKey(for: now, location: loaded.location)
         self.launchAtLogin = Self.readLaunchAtLoginStatus()
@@ -112,6 +120,11 @@ final class SkyViewModel: ObservableObject {
         }
         locationManager.onStatusMessage = { [weak self] msg in
             self?.statusNotice = msg
+        }
+        desktopManager.onScreensChanged = { [weak self] in
+            guard let self = self else { return }
+            self.displays = DisplayIdentity.allDisplays()
+            self.syncAllOutputs()
         }
         wallpaperSync.onScreenLocked = { [weak self] in
             guard let self = self, self.settings.syncSystemWallpaper else { return }
@@ -322,6 +335,27 @@ final class SkyViewModel: ObservableObject {
         }
     }
 
+    func isDisplayEnabled(_ uuid: String) -> Bool {
+        !settings.disabledDisplayIDs.contains(uuid)
+    }
+
+    func setDisplayEnabled(uuid: String, enabled: Bool) {
+        var ids = settings.disabledDisplayIDs.filter { $0 != uuid }
+        if !enabled {
+            ids.append(uuid)
+        }
+        guard ids != settings.disabledDisplayIDs else { return }
+        settings.disabledDisplayIDs = ids
+        settings.save()
+        desktopManager.setDisabledDisplayIDs(ids)
+        displays = DisplayIdentity.allDisplays()
+        syncAllOutputs()
+        if settings.syncSystemWallpaper {
+            // Re-syncs enabled displays and restores the original wallpaper on newly excluded ones
+            syncLockScreenWallpaperNow(showToast: false)
+        }
+    }
+
     func setLiveWeatherEnabled(_ enabled: Bool) {
         settings.liveWeatherEnabled = enabled
         settings.save()
@@ -374,7 +408,8 @@ final class SkyViewModel: ObservableObject {
             showMoon: settings.showMoon,
             starIntensity: settings.starIntensity,
             spanAcrossDisplays: settings.spanAcrossDisplays,
-            weather: activeWeather
+            weather: activeWeather,
+            disabledDisplayIDs: settings.disabledDisplayIDs
         )
         if showToast {
             statusNotice = "已将当前天色同步到系统与锁屏壁纸"
